@@ -2,40 +2,30 @@
 Import a bible in imp format, and export separated books in csv format
 """
 
-import unicodecsv, codecs
 from util import *
 
-def imp_to_csv(translation):
+def imp_to_csv(translation, input_filename, output_directory):
 
-    books,chapters,verses,texts = imp_load(translation+".txt")
+    # Load the entire bible from an text file in imp format
+    books,chapters,verses,texts = imp_load(input_filename)
 
-    current_book = None
-    n = 0
-    # Loop through entire bible
-    for book,cnum,vnum,text in zip(books,chapters,verses,texts):
+    # Get a ordered set of books
+    book_set = set()
+    books_ordered = [b for b in books if b not in book_set and not book_set.add(b)]
 
-        # If the book changes, write out old csv file and start a new one
-        if book != current_book:
-            if current_book != None:
+    booknum = 0
 
-                # Write to CSV file
-                with open("./to_translate/{0}_{1:0=2}_{2}.csv".format(translation, n, current_book),'wb') as f:
-                    cw = unicodecsv.writer(f,encoding='utf-8')
-                    cw.writerows(rows)
+    # for every book
+    for book in books_ordered:
+        booknum += 1
 
-            current_book = book
-            n += 1
-            rows = []
-            rows.append(['book','chapter','verse','text']) # header
+        # select all verses from the current book
+        rows = [[c,v,t] for b,c,v,t in zip(books,chapters,verses,texts) if b == book]
 
-        # Add a row for this verse
-        rows.append([book,cnum,vnum,text])
-
-    # Write last book to CSV file
-    with open("./to_translate/{0}_{1:0=2}_{2}.csv".format(translation, n, current_book),'wb') as f:
-        cw = unicodecsv.writer(f,encoding='utf-8')
-        cw.writerows(rows)
+        # export those verses to csv file
+        csv_export_book("{0}/{1}_{2:0=2}_{3}.csv".format(output_directory, translation, booknum, book), rows)
 
 
-for t in ['ESV','Afr1953','DutSVV']:
-    imp_to_csv(t)
+imp_to_csv('ESV', '../../living_word/alignment/bibles_imp/ESV.txt', '../../living_word/alignment/csv_books/ESV')
+imp_to_csv('Afr1953', '../../living_word/alignment/bibles_imp/Afr1953.txt', '../../living_word/alignment/csv_books/Afr1953')
+imp_to_csv('DutSVV', '../../living_word/alignment/bibles_imp/DutSVV.txt', '../../living_word/alignment/csv_books/DutSVV')

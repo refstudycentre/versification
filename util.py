@@ -4,9 +4,11 @@ import numpy as np
 import unicodecsv
 import codecs
 import goslate
+import sqlite3
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
+
 
 def imp_load(filename):
 
@@ -43,10 +45,8 @@ def imp_load(filename):
 
     return books, chapters, verses, texts
 
+"""
 def load_verses(filename):
-    """
-    load verses from csv file
-    """
 
     texts = []
     books = []
@@ -68,10 +68,8 @@ def load_verses(filename):
     # return results
     return books,chapters,verses,texts
 
+
 def load_translated_verses(input_translations, input_files):
-    """
-    load translated bibles from csv files
-    """
 
     texts_en = []
     texts_original = []
@@ -99,6 +97,7 @@ def load_translated_verses(input_translations, input_files):
 
     # return results
     return translations,books,chapters,verses,texts_original,texts_en
+"""
 
 def calculate_similarity(texts, translations):
 
@@ -120,6 +119,7 @@ def calculate_similarity(texts, translations):
 
     return M
 
+
 def find_best_couple(M,t):
     """
     find best couple in similarity matrix M
@@ -130,29 +130,8 @@ def find_best_couple(M,t):
     i_max, j_max = np.unravel_index(M.argmax(), M.shape)
     P_max = M[i_max, j_max]
 
-    """
-    N = len(M)
-    P_max = 0
-    i_max = None
-    j_max = None
-
-    for i in range(N):
-        for j in range(i):
-
-            # Make sure they are not from the same translation(s)
-            if len([val for val in t[i] if val in t[j]]) == 0:
-
-                # Check if similarity is best yet
-                if M[i][j] > P_max:
-                    P_max = M[i][j]
-                    i_max = i
-                    j_max = j
-                    
-                    if P_max == 1.: # float comparison... this is fine because there are not many posible values for this using tf-idf
-                        return i_max, j_max, P_max
-    """
-    
     return i_max, j_max, P_max
+
 
 def merge_nodes(M,a,b):
     """
@@ -185,6 +164,7 @@ def merge_nodes(M,a,b):
     newM[b,:] = np.zeros_like(newM[b,:])
     
     return newM
+
 
 def group_verses(M, t, numT, P_min = 0.1):
     """
@@ -254,6 +234,7 @@ def group_verses(M, t, numT, P_min = 0.1):
 
     return groups
 
+
 def align(input_translations, input_filenames, output_filename):
     """
     Load one csv file for each translation
@@ -268,7 +249,8 @@ def align(input_translations, input_filenames, output_filename):
 
     # Load pre-translated data
     print "\tLoading data from files..."
-    translations,books,chapters,verses,texts_original,texts_en = load_translated_verses(input_translations, input_filenames)
+    #translations,books,chapters,verses,texts_original,texts_en = load_translated_verses(input_translations, input_filenames)
+    translations,chapters,verses,texts_original,texts_en = csv_import_translated_books(input_filenames, input_translations)
 
     # Calculate similarity between verses
     print "\tCalculating similarity matrix..."
@@ -305,7 +287,7 @@ def align(input_translations, input_filenames, output_filename):
         if len(group) == M:
             # rows where all translations are present, are quick:
             group.sort()
-            row = [u"{0}:{1}:{2}:{3}".format(books[verse],chapters[verse],verses[verse],texts_original[verse]) for verse in group]
+            row = [u"{0}:{1}:{2}".format(chapters[verse],verses[verse],texts_original[verse]) for verse in group]
         else:
             # for other rows, we have to find the missing translation, and substitute it with a blank
             row = []
@@ -314,7 +296,7 @@ def align(input_translations, input_filenames, output_filename):
                 for verse in group:
                     if translation == translations[verse]:
                         # verse found for this translation
-                        row.append(u"{0}:{1}:{2}:{3}".format(books[verse],chapters[verse],verses[verse],texts_original[verse]))
+                        row.append(u"{0}:{1}:{2}".format(chapters[verse],verses[verse],texts_original[verse]))
                         found = True
                         break
                 if not found:
@@ -333,6 +315,7 @@ def align(input_translations, input_filenames, output_filename):
 
     print "\tDone!"
 
+
 def translate_csv(in_filename, language, out_filename):
     """
     Load a bible book from csv file
@@ -340,20 +323,110 @@ def translate_csv(in_filename, language, out_filename):
     save it as a new file
     """
 
+    # Create a translator object
     gs = goslate.Goslate(retry_times=100, timeout=100)
 
-    books,chapters,verses,texts_original = load_verses(in_filename)
+    # Load the bible book to be translated
+    chapters,verses,texts_original = csv_import_book(in_filename)
 
+    # Batch translate the verses if necessary
     if language != 'en':
+        print "Batch translating {0} verses from '{1}' to 'en'".format(len(texts_original), language)
         texts_translated = gs.translate(texts_original, 'en', language)
     else:
+        print "Not translating {0} verses already in 'en'".format(len(texts_original))
         texts_translated = texts_original
 
-    rows = zip(books, chapters, verses, texts_original, texts_translated)
-
     # Write to CSV file
+    rows = zip(chapters, verses, texts_original, texts_translated)
     with open(out_filename,'wb') as f:
         cw = unicodecsv.writer(f, encoding='utf-8')
-        cw.writerow(['book','chapter','verse','text_original','text_english'])
+        cw.writerow(['chapter','verse','text_original','text_english'])
         cw.writerows(rows)
+
+
+def csv_import_book(filename):
+    """
+    load bible book from csv file
+    """
+
+    texts = []
+    chapters = []
+    verses = []
+
+    # Read in a whole file of verses
+    with open(filename,'rb') as f:
+        cr = unicodecsv.reader(f, encoding='utf-8')
+        header = cr.next() # skip header
+
+        # Process verses
+        for cnum,vnum,text in cr:
+            chapters.append(int(cnum))  # parse integer
+            verses.append(int(vnum))    # parse integer
+            texts.append(text.strip())  # remove surrounding whitespace
+
+    # return results
+    return chapters,verses,texts
+
+
+def csv_export_book(filename, rows=[], chapters=[], verses=[], texts=[]):
+
+    if not len(rows) > 0:
+        rows = zip(chapters, verses, texts)
+
+    with open(filename,'wb') as f:
+        cw = unicodecsv.writer(f,encoding='utf-8')
+        cw.writerow(['chapter','verse','text'])
+        cw.writerows(rows)
+
+
+def csv_import_translated_book(input_file):
+    """
+    import a single translated book from a single translation from single csv file
+    """
+
+    texts_en = []
+    texts_original = []
+    chapters = []
+    verses = []
+
+    # Read in a whole (Google translated) file of verses
+    with open(input_file, 'rb') as f:
+        cr = unicodecsv.reader(f, encoding='utf-8')
+        header = cr.next() # skip header
+
+        # Process verses
+        for cnum,vnum,text_original,text_en in cr:
+            chapters.append(int(cnum))
+            verses.append(int(vnum))
+            texts_original.append(text_original.strip())
+            texts_en.append(text_en.strip())
+
+    # return results
+    return chapters,verses,texts_original,texts_en
+
+
+def csv_import_translated_books(input_files, input_translations):
+    """
+    import a single book from M translations from M csv files
+    """
+
+    if len(input_files) != len(input_translations):
+        raise ValueError("Number of input files and translations are not the same")
+
+    translations = []
+    chapters = []
+    verses = []
+    texts_original = []
+    texts_en = []
+
+    for in_file,translation in zip(input_files,input_translations):
+        c,v,o,e = csv_import_translated_book(in_file)
+        chapters.extend(c)
+        verses.extend(v)
+        texts_original.extend(o)
+        texts_en.extend(e)
+        translations.extend([translation]*len(e))
+
+    return translations,chapters,verses,texts_original,texts_en
 
