@@ -45,59 +45,6 @@ def imp_load(filename):
 
     return books, chapters, verses, texts
 
-"""
-def load_verses(filename):
-
-    texts = []
-    books = []
-    chapters = []
-    verses = []
-
-    # Read in a whole file of verses
-    with open(filename,'rb') as f:
-        cr = unicodecsv.reader(f, encoding='utf-8')
-        header = cr.next() # skip header
-
-        # Process verses
-        for book,cnum,vnum,text in cr:
-            books.append(book)
-            chapters.append(cnum)
-            verses.append(vnum)
-            texts.append(text)
-
-    # return results
-    return books,chapters,verses,texts
-
-
-def load_translated_verses(input_translations, input_files):
-
-    texts_en = []
-    texts_original = []
-    translations = []
-    books = []
-    chapters = []
-    verses = []
-
-    # For each translation
-    for in_t, in_fname in zip(input_translations, input_files):
-        
-        # Read in a whole (Google translated) file of verses
-        with open(in_fname, 'rb') as f:
-            cr = unicodecsv.reader(f, encoding='utf-8')
-            header = cr.next() # skip header
-
-            # Process verses
-            for book,cnum,vnum,text_original,text_en in cr:
-                translations.append(in_t)
-                books.append(book)
-                chapters.append(cnum)
-                verses.append(vnum)
-                texts_original.append(text_original)
-                texts_en.append(text_en)
-
-    # return results
-    return translations,books,chapters,verses,texts_original,texts_en
-"""
 
 def calculate_similarity(texts, translations):
 
@@ -430,3 +377,28 @@ def csv_import_translated_books(input_files, input_translations):
 
     return translations,chapters,verses,texts_original,texts_en
 
+
+def csv_import_aligned_book(input_file):
+    """
+    Import a single aligned book (e.g. after it is checked by humans)
+    """
+
+    groups = []
+
+    with open(input_file, 'rb') as f:
+        cr = unicodecsv.reader(f, encoding='utf-8')
+
+        translations = cr.next() # header contains translation names
+
+        for row in cr:
+            group = {}
+            for i in range(len(translations)):
+                verse = row[i].split(':',3)
+                group[translations[i]] = {
+                    'chapternum':int(verse[0]),
+                    'versenum':int(verse[1]),
+                    'text':verse[2].strip()
+                }
+            groups.append(group)
+
+    return groups
